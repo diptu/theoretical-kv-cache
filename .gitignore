@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# backend: regenerable model checkpoint (run `python3 -m app.train` to recreate)
+backend/checkpoints/*.pt
+backend/checkpoints/config.json
