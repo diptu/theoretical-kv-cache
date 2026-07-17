@@ -1,66 +1,52 @@
-# Functional Specification: Interactive Research Platform
-## GOAL:
-I am essentially building a "Live Paper." Instead of just publishing the PDF or Markdown file, I am creating a digital environment where the reader can "run" the math you have derived.
+# Requirements
 
-## 1. System Overview
-The platform serves as a "Living Document" system, evolving the `theoretical-kv-cache` research repository into an interactive, high-fidelity web experience. It renders academic-grade research while embedding stateful, reactive simulations.
+Environment, dependencies, and compute needed to reproduce every run in `preregistration.md`.
 
----
+## Environment
 
-## 2. Core Functional Requirements
+- Python ≥ 3.11
+- CUDA-capable GPU, ≥ 8 GB VRAM (T4 sufficient; all runs sized for free/low-cost tiers)
+- Linux (tested) · ~10 GB disk for checkpoints + eigenspectra
 
-### A. The "Research Narrative" Engine
-* **Dynamic Markdown (MDX) Rendering:** Parse local `.md` research notes and convert them into interactive web pages.
-* **Mathematical LaTeX Rendering:** Integration of **KaTeX** for high-performance rendering of linear algebra and machine learning derivations.
-* **Reference Management:** Auto-generate citations and cross-reference links between papers, definitions, and derivations.
+## Dependencies
 
-### B. The "Reactive Visualization" Sandbox
-* **Stateful Simulation Environment:**
-    * **Interactive Inputs:** Provide sliders, dropdowns, and input fields to manipulate variables (e.g., sequence length, compression ratio).
-    * **Real-time Computation:** Use **Math.js** or **TensorFlow.js** in-browser to re-compute results instantly upon input change.
-* **Synchronization Store (Zustand):** Synchronize multiple charts and formulas so that updating a single parameter propagates changes across the entire document.
+```
+torch>=2.4          # pin exact version in requirements.lock at freeze
+torchvision
+numpy
+scipy
+pyhessian           # Hessian eigenspectrum: Lanczos + Hutchinson
+matplotlib          # analysis/ figures
+pandas              # results aggregation
+pyyaml              # configs/
+```
 
-### C. Researcher Productivity Tools
-* **Version-Controlled Publishing:** Deployment tied directly to GitHub repository pushes via Vercel/GitHub integration.
-* **Global Search (Fuse.js):** Searchable index for papers, definitions, and personal research notes.
-* **Print-to-PDF Mode:** Layout toggle that strips interactive components and optimizes CSS for academic, A4-ready paper exports.
+```bash
+pip install -r requirements.txt
+pip freeze > requirements.lock   # committed at pre-registration freeze
+```
 
----
+**Version policy:** `requirements.txt` states intent; `requirements.lock` (frozen with the pre-registration commit) is authoritative for confirmatory runs. Confirmatory results must be produced from the locked environment.
 
-## 3. Data Flow Specification
+**DST implementation:** RigL, implemented in `src/` against the locked torch version (no external DST framework dependency — keeps the mask logic auditable). Correctness check: reproduce RigL paper's ResNet-CIFAR numbers within ±0.5% before Phase 1.
 
-1.  **Input:** Developer pushes Markdown/MDX to `/research/` folder.
-2.  **Processing (Build Time):**
-    * Next.js fetches MDX.
-    * KaTeX converts LaTeX strings to static HTML/CSS.
-    * Content cached via Incremental Static Regeneration (ISR).
-3.  **Client-Side (Run Time):**
-    * Browser loads the page.
-    * React hydrates interactive components (`KVCacheViz`, `AttentionMatrix`).
-    * Web Workers handle heavy matrix computations to maintain 60fps performance.
+## Compute budget
 
----
+| Phase | Runs | GPU-hrs (T4 est.) | Fits on |
+|---|---|---|---|
+| Pilot (§8) | 4 | ~5 | Colab free / Kaggle |
+| Phase 1 | 60 | ~60–70 | Colab Pro / Kaggle (30 hr/wk) / GSU cluster |
+| Phases 2–3 | ~300 | ~300 | GSU cluster or spot instances |
 
-## 4. Proposed Feature Roadmap
+Per-run cost = training (~45 min) + Hessian measurement (~10–15 min: top-50 Lanczos + 100-probe Hutchinson). Estimates validated during pilot; corrected numbers recorded here before freeze.
 
-| Phase | Feature | Tech Focus |
-| :--- | :--- | :--- |
-| **Phase 1** | **The Research Portal** | Next.js, MDX, KaTeX, Vercel |
-| **Phase 2** | **The Interactive Sandbox** | D3.js, Framer Motion, Zustand |
-| **Phase 3** | **Computational Layer** | TensorFlow.js, Web Workers |
-| **Phase 4** | **Export/Print Mode** | CSS Print Media Queries |
+## Reproducibility
 
----
+- Every run driven by a config file in `configs/` — no CLI-only hyperparameters
+- Seeds fixed per cell (3 seeds: 0, 1, 2); condition (d) inherits its parent (c) seed
+- Per-run outputs to `results/{run_id}/`: metrics.json, top-k eigenvalues, trace + CI, spectral density, final mask hash
+- Figure scripts in `analysis/` regenerate all plots from `results/` alone
 
-## 5. Technical Stack Summary
+## Data
 
-* **Framework:** [Next.js (App Router)](https://nextjs.org/)
-* **Styling:** [Tailwind CSS](https://tailwindcss.com/)
-* **Math:** [KaTeX](https://katex.org/)
-* **Visuals:** [D3.js](https://d3js.org/)
-* **Animation:** [Framer Motion](https://www.framer.com/motion/)
-* **State:** [Zustand](https://docs.pmnd.rs/zustand/getting-started/introduction)
-
----
-
-> "Every mathematical concept learned should answer one question: How does this reduce or explain memory in transformers?"
+CIFAR-10 via torchvision (auto-download). Symmetric label noise generated deterministically from the run seed; noisy label files committed per noise level so all methods train on *identical* corrupted labels.
