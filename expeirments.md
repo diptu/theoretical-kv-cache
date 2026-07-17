@@ -1,158 +1,129 @@
-# Effective Dimension Predicts the Sparse Double Descent Peak
+# Experiments — Sparse On-Device Adaptation for Crop Screening Under Drift
 
-**Working title:** *One Axis to Rule Them All: Collapsing Sparse Double Descent Curves onto Effective Dimension*
+Operational breakdown of the frozen plan in [`preregistration.md`](preregistration.md).
+Each run is tied to a hypothesis (H1–H4). **Nothing here overrides the pre-registration** —
+if a run suggests a change, log it in the pre-registration amendment log, do not edit hypotheses in place.
 
-**Goal:** A preprint-quality result + targeted professor outreach → fully funded PhD offer, Fall 2027.
-
----
-
-## 1. Hypothesis
-
-The sparse double descent (SDD) test-error peak is governed by **effective dimension** (measured from the Hessian eigenspectrum), not nominal sparsity.
-
-**Falsifiable prediction:** A dynamic sparse training (DST) network and a statically pruned network at the *same nominal sparsity* have *different* effective dimensions — so their SDD peaks occur at **different nominal sparsities** but the **same effective dimension**. Plotting test error vs. effective dimension collapses both curves onto one.
-
-**Kill condition:** If curves do not collapse within confidence bands under any standard effective-dimension definition, the hypothesis is falsified. (This is a publishable negative result — it would show effective dimension is *not* the governing quantity, contra the parameter-counting literature.)
+Legend: ☐ not started · ◐ running · ☑ done · ✗ falsified/negative
 
 ---
 
-## 2. Positioning: the "right axis" resolution (lit review complete — novelty confirmed)
+## Decision gate (read before Phase 1)
 
-**The framing that sells this — the "U-Turn" argument:**
-- **Curth et al. (2023)** argue that much of "double descent" in classical methods is an *illusion created by plotting against the wrong complexity axis* — unfolding onto the right axis recovers the classical U-curve. They pose the problem; they don't resolve it for deep sparse networks.
-- **This experiment is the deep-learning resolution:** nominal sparsity is the wrong axis for SDD; effective dimension is the right one. The curve-collapse test is the direct empirical demonstration.
+The primary metric — recovery ratio `(adapted − frozen) / (oracle − frozen)` — is undefined
+until Phase 0 fixes `frozen` and `oracle`. **The `≥ 0.30` H1 threshold and the `k ≤ 25%` H3
+budget are locked at the end of Phase 0, before any adaptation result is seen.** Record the
+locked values here once, with a commit hash, and never move them.
 
-**Supporting literature:**
-- **He et al. (ICML 2022):** established sparse double descent empirically — the phenomenon to be explained.
-- **Maddox et al. (2020), Abbas et al. (2021):** effective dimension from the Hessian eigenspectrum as a generalization metric — but used *descriptively* (correlates with generalization), never *predictively* (dictates peak location).
-- **Granziol et al. (2020):** Hessian bulk / flatness as general geometric properties — again analysis, not a predictive tool for the SDD phase transition.
-
-**Confirmed gap (lit review, Jul 2026):** no existing work uses effective dimension to predict the SDD peak location, and no one uses the DST-vs-static gap as a controlled test of what governs the peak. Current work in the space is either algorithmic (new pruning/DST methods, e.g. GlobalPru) or geometric-descriptive.
-
-**What elevates this above "metric collector" papers:** most work reports that effective dimension *correlates* with generalization. This posits a **causal mechanism** — effective dimension *dictates* the peak location — with a pre-registered kill condition. Theory → derived prediction → measurement that can disprove it. Physics-of-AI, not "train sparse nets and report numbers."
+- Locked thresholds: `recovery_min = ____`  ·  `k_max = ____`  · commit `________`
 
 ---
 
-## 3. Known risks and how the design addresses them
+## Phase 0 — Baselines & drift confirmation (prerequisite)
 
-### Risk A — Effective dimension is ill-defined and expensive
-Multiple non-equivalent definitions exist (eigenvalue-threshold count, trace-based, `Σ λᵢ/(λᵢ+α)`). Estimation on real nets requires stochastic approximation.
+Establishes the two anchors of every later number. If frozen accuracy does **not** drop under
+drift, there is nothing to recover and the project stops here.
 
-**Mitigation:**
-- Pre-register **three definitions** (Maddox-style `N_eff(α) = Σ λᵢ/(λᵢ+α)`, spectral-gap count, Hessian trace via Hutchinson) and report all three. Collapse under ≥1 pre-registered definition with the others reported honestly = credible; cherry-picking after the fact = not.
-- Use **PyHessian** (Lanczos + Hutchinson, designed for exactly this) — spectral density on ResNet-scale nets is feasible on a single GPU.
-- Quantify estimator noise: repeat estimation with k random probe vectors, report CIs.
+| ID   | Purpose | Tests | Factors | Status | Result |
+| ---- | ------- | ----- | ------- | ------ | ------ |
+| E0.1 | Train source models on PlantVillage | — | {MobileNetV2-0.35, MCUNet} × 3 seeds | ☐ | src acc = ____ |
+| E0.2 | Measure **frozen** accuracy on each drift target | H1 anchor | backbones × {PlantDoc, Cassava, synthetic} × 3 | ☐ | frozen = ____ |
+| E0.3 | Train **cloud oracle** (full labelled retrain on target) | H1 anchor | same grid | ☐ | oracle = ____ |
+| E0.4 | Confirm gap `oracle − frozen` is material (≥ 10 pts) on ≥ 2 drift types | go/no-go | — | ☐ | gap = ____ |
 
-### Risk B — SDD needs label noise (artificial regime)
-Peaks are most visible with 10–20% symmetric label noise.
+**Exit criterion:** E0.4 passes → lock thresholds in the decision gate → proceed. Otherwise, re-scope drift.
 
-**Mitigation:** Run the noise level as a controlled axis {0%, 10%, 20%}. If collapse holds *across* noise levels, that strengthens the claim; if it only holds under noise, say so explicitly. Framing: label noise is the standard magnifying glass for interpolation-threshold phenomena (same as in the original deep double descent work), not a bug.
-
-### Risk C — DST vs. static pruning differ in more than effective dimension
-Mask exploration, training dynamics, and implicit regularization are confounded. A failed collapse wouldn't cleanly falsify the theory.
-
-**Mitigation — third and fourth conditions:**
-1. **Static random pruning** (no magnitude criterion) — different mask structure, removes magnitude-pruning bias.
-2. **DST with frozen final mask retrained from scratch** — isolates the *mask* from the *dynamics*. If effective dimension is the governing quantity, this condition should land on the same collapsed curve as its parent DST run.
-
-With four conditions, either the curves collapse (strong positive) or the *pattern of failure* localizes what else matters (still a finding).
+Run:
+```bash
+python -m src.train --backbone mobilenetv2_035 --data plantvillage --seed 0
+python -m src.train --eval --ckpt <src> --data plantdoc --mode frozen
+python -m src.train --backbone mobilenetv2_035 --data plantdoc --mode oracle --seed 0
+```
 
 ---
 
-## 4. Experimental design
+## Phase 1 — Batch adaptation (minimum publishable unit)
 
-**Scale (deliberately small — this must run on free/cheap compute):**
+All adaptation conditions, unlabelled batch of target data, compared against the Phase 0 anchors.
+This is the core H1 test.
 
-| Axis | Values |
-|---|---|
-| Dataset | CIFAR-10 (CIFAR-100 as robustness check if time permits) |
-| Architecture | ResNet-18 (standard for SDD replication) |
-| Sparsity levels | ~10 points, log-spaced, 50%→99.5% (dense around the expected peak) |
-| Methods | Static magnitude prune, static random prune, DST (RigL or SET), DST-mask-retrain |
-| Label noise | 0%, 10%, 20% |
-| Seeds | 3 per cell |
+Grid: 6 conditions × 2 backbones × 3 drift types × 3 seeds.
 
-**Measurements per trained model:** test error, train error (confirm interpolation), Hessian eigenspectrum via PyHessian (top-k eigenvalues + trace + spectral density), all three effective-dimension definitions.
+| ID   | Condition | Tests | Status | Recovery ratio (mean ± CI) |
+| ---- | --------- | ----- | ------ | -------------------------- |
+| E1.1 | BN-recal (running-stat recompute) | H1 | ☐ | ____ |
+| E1.2 | TENT (affine-only entropy min) | H1 | ☐ | ____ |
+| E1.3 | **Sparse on-device update (core)** | H1, H3 | ☐ | ____ |
+| E1.4 | Pseudo-label self-training | H1 | ☐ | ____ |
 
-**Analysis:** For each method, locate peak in (nominal sparsity, test error) space. Then re-plot all methods in (effective dimension, test error) space. Success metric: peak locations align in effective-dimension coordinates within seed-level confidence intervals. Quantify with peak-location distance ratio (spread in eff-dim coords ÷ spread in nominal-sparsity coords) — a number reviewers can grab.
+**H1 decision:** computed on the mean recovery ratio of E1.3 across the three drift types
+against the locked `recovery_min`. Record pass/fail and commit hash. Do not tune E1.3's
+sparse-selection rule on the drift test sets — it is fixed in `configs/sparse_select.yaml`.
 
-**Compute budget:** ~360 training runs of ResNet-18/CIFAR-10 (~1 GPU-hr each on a T4/A10). Phased: Phase 1 (core 2 methods × 1 noise level × 10 sparsities × 3 seeds = 60 runs) is a Colab Pro / Kaggle / GSU-cluster-sized job. Phase 2 expands only if Phase 1 shows signal.
-
----
-
-## 5. Timeline (today → Fall 2027 offer)
-
-| When | What |
-|---|---|
-| **Jul 2026** | **Pre-register the experimental plan** (§7): hypotheses, all four conditions, three effective-dim definitions, kill condition — on OSF (or a timestamped public GitHub repo/wiki). Do this *before* the first training run. |
-| **Jul–Aug 2026** | Replicate He et al. SDD baseline. Get PyHessian pipeline working. Phase 1 runs. |
-| **Sep 2026** | Analysis, first collapse plot. Write 4–6 page workshop-style writeup + arXiv preprint (even preliminary). |
-| **Oct 2026** | **Cold outreach to the 5 professors below** — this is the peak window: after summer, before their inboxes flood with generic Dec applicants. Attach the preprint + one killer figure. |
-| **Nov 2026** | Follow-ups, Zoom calls with responders. Incorporate their feedback into Phase 2 runs — instant advisor-fit signal. |
-| **Dec 2026** | Applications due (UNC ~Dec 10, MSU/UMN/Rice typically Dec 1–15 — verify each). Named professor in SOP, ideally after having spoken with them. |
-| **Jan–Mar 2027** | Interviews. Phase 2 / CIFAR-100 results as fresh material to discuss. |
-| **Spring 2027** | Offers. Funded PhD = RA/TA/fellowship; a professor who wants you *is* the funding at these schools. |
-
-The critical path is **preliminary results by end of September**. Everything downstream depends on the outreach email containing a figure, not a promise.
+Run:
+```bash
+python -m src.train --adapt sparse_update --ckpt <src> --data plantdoc \
+    --tier mcu --config configs/sparse_select.yaml --seed 0
+```
 
 ---
 
-## 6. Target professors and per-professor framing
+## Phase 2 — Streaming / continual stability
 
-The proposal core stays identical; the *emphasis paragraph* in each email changes.
+Feeds the target as a long unlabelled stream instead of a single batch. Tests whether the
+core method quietly diverges over time — the classic failure mode of test-time adaptation.
 
-### 1. Tianlong Chen — UNC Chapel Hill (QS #140) — **Priority 1**
-- **Why him:** Sparsity/lottery-ticket work is his core identity; heavily funded (Meta ×3, Amazon ×2, Cisco ×4, IBM, NIH); actively recruiting PhD students.
-- **Angle:** Frame as extending the lottery-ticket/sparsity research program with a *theory-first* falsifiable experiment — the effective-dimension lens as a unifying explanation for when sparse subnetworks match dense performance. Cite his sparsity papers specifically.
-- **Hook line:** "Your work established *that* sparse subnetworks generalize; this experiment tests *what quantity governs when* they stop."
+| ID   | Purpose | Tests | Factors | Status | Min acc over stream |
+| ---- | ------- | ----- | ------- | ------ | ------------------- |
+| E2.1 | Streaming sparse-update, fixed drift target | H2 | best backbone × 3 drift × 3 seeds | ☐ | ____ |
+| E2.2 | Streaming under *sequential* drift (target A → B) | H2 | — | ☐ | ____ |
 
-### 2. Sijia Liu — Michigan State (QS #161) — **Priority 1**
-- **Why him:** Directly works on the *theory* of pruning and LTH (bi-level optimization for pruning); NSF CAREER 2024, ARO, Cisco, MIT-IBM Watson affiliate.
-- **Angle:** Lead with the theoretical claim and the falsification structure — he's the most theory-oriented of the five. The bi-level-optimization connection: effective dimension as the quantity a principled pruning objective should target. Cite Curth et al. explicitly — the "wrong axis" critique is exactly the kind of foundational question theory people care about.
-- **Hook line:** the pre-registered kill condition (§1) — and state explicitly that you'll **publish the negative result if the hypothesis fails**. Willingness to be wrong in public signals scientific maturity over number-chasing; this lands hardest with him.
-
-### 3. Caiwen Ding — Minnesota (QS ~150s)
-- **Why him:** Algorithm–hardware co-design of sparse ML; explicitly recruiting with full financial support; NSF CAREER 2024, 24+ grants.
-- **Angle:** Systems/efficiency framing — if effective dimension predicts the safe sparsity ceiling, it becomes a *design rule* for hardware-aware sparsity budgets rather than trial-and-error. Lead with execution credibility: a theory-only pitch from a student is risky, but a theory-driven pitch backed by a production-grade evaluation pipeline (PyHessian + your CI/CD, AWS, LLM-eval infrastructure track record) is exactly what co-design labs need — students who can get things to work.
-- **Hook line:** "A predictive rule for how sparse you can go before the accuracy cliff — measured, not guessed."
-
-### 4. Anshumali Shrivastava — Rice (QS ~140s)
-- **Why him:** SLIDE, contextual sparsity for LLMs, dynamic sparse attention; large-scale ML focus.
-- **Caveat first:** Meta Superintelligence Labs affiliation — **verify advising bandwidth before investing** (check his page for "recruiting" language, or ask directly in email #1; a fast no is fine).
-- **Angle:** Scale trajectory — CIFAR/ResNet is the controlled testbed, but the question "what governs the sparsity ceiling" is exactly the contextual-sparsity-for-LLMs question. Position the experiment as the rigorous small-scale version of what his group bets on at scale.
-
-### 5. Flex pick — outside the QS 100–200 band
-Since the band constraint is soft, add **one** of the pure-DST cluster as a fifth email:
-- **Xiaolong Ma (U Arizona)** — core DST publications, NSF panelist, recently +$640K funding → likely has open funded slots. **Best default choice:** funding recency + core-DST fit.
-- Alternatives: Yanzhi Wang (Northeastern), Geng Yuan (UGA); Zhangyang "Atlas" Wang (UT Austin, ~top 70) is the reach — worth one email since the marginal cost is near zero and he's *the* lottery-ticket figure.
-
-**Outreach mechanics:** ≤150-word email, one attached figure (the collapse plot), preprint link, **link to the pre-registered plan** ("pre-registered on OSF before the first run" is a one-clause credibility bomb), one sentence of specific engagement with *their* paper, one clear ask ("are you taking funded PhD students for Fall 2027?"). No CV wall-of-text — link it.
+**Kill trigger:** if accuracy at **any** checkpoint falls below the E0.2 frozen baseline,
+H1 is falsified per the pre-registration (net-harmful adaptation). Log it and write the negative result.
 
 ---
 
-## 7. Pre-registration (do this before the first training run)
+## Phase 3 — Ablations
 
-**Status of novelty check: ✅ complete (Jul 2026).** Gap confirmed — no existing work uses effective dimension predictively for SDD peak location, or the DST-vs-static gap as a controlled test (see §2). One residual watch item: recheck OpenReview around ICLR 2027 submission time and monitor the target labs' arXiv output monthly; if something appears, the mask-retrain ablation (§3 Risk C) is the fallback novelty.
-
-**Pre-registration protocol (OSF, or a timestamped public GitHub repo):**
-1. **Hypotheses:** primary (curves collapse in effective-dim coordinates) and the explicit kill condition.
-2. **All four conditions:** static magnitude, static random, DST (RigL/SET), DST-mask-retrain.
-3. **All three effective-dim definitions**, named in advance, with the commitment to report all three regardless of outcome.
-4. **Success metric:** peak-location distance ratio, defined before seeing data.
-5. **Noise levels, sparsity grid, seeds** — the full §4 table, frozen.
-
-This costs half a day and converts "student with an idea" into "researcher running a pre-registered study." It also inoculates against the cherry-picking critique in §3 Risk A — the definitions were fixed before the data existed, provably.
+| ID   | Purpose | Tests | Sweep | Status | Result |
+| ---- | ------- | ----- | ----- | ------ | ------ |
+| E3.1 | Sparsity efficiency: recovery vs. update budget | H3 | k ∈ {5, 10, 25, 50, 100}% | ☐ | knee at k = ____ |
+| E3.2 | Selection rule: top-k grad-mag vs. random vs. BN-only | H3 | 3 rules | ☐ | ____ |
+| E3.3 | Abstention gate: selective accuracy vs. coverage | H4 | entropy / energy threshold | ☐ | ____ |
+| E3.4 | Synthetic-drift severity curve (uses OCR-style corruption generator) | H1 | 5 severities | ☐ | ____ |
 
 ---
 
-## 8. Deliverables checklist
+## Phase 4 — On-hardware profiling
 
-- [x] Novelty check complete — gap confirmed (Jul 2026)
-- [ ] Pre-registered plan live on OSF/GitHub (before first run)
-- [ ] SDD baseline replicated (He et al. setup)
-- [ ] PyHessian pipeline validated (CI-quantified effective-dim estimates)
-- [ ] Phase 1 runs done (60 runs)
-- [ ] The Figure: test error vs. nominal sparsity (messy) side-by-side with test error vs. effective dimension (collapsed)
-- [ ] arXiv preprint (4–6 pages + appendix)
-- [ ] 5 personalized outreach emails drafted
-- [ ] Applications submitted by early Dec 2026 with professor named in each SOP
+Numbers must come from a **physical device per tier**, not FLOP estimates, or the edge-budget
+claim is unsupported.
+
+| ID   | Tier | Device | Metric | Status | Result |
+| ---- | ---- | ------ | ------ | ------ | ------ |
+| E4.1 | MCU | (e.g. STM32 / MCU ≤ 256 KB) | peak train RAM, ms/update | ☐ | ____ |
+| E4.2 | Cheap-device | Pi Zero 2 W / low-end Android | RAM, latency, mWh/update | ☐ | ____ |
+
+**Budget check:** E1.3's memory footprint must fit the E4.1 tier, else re-report the core
+result under the cheap-device tier only and say so plainly.
+
+---
+
+## Results ledger
+
+Single source of truth for the paper's main table. Fill as runs complete.
+
+| Drift target | Frozen | BN-recal | TENT | **Sparse (core)** | Pseudo-label | Oracle |
+| ------------ | ------ | -------- | ---- | ----------------- | ------------ | ------ |
+| PlantDoc     | ____   | ____     | ____ | ____              | ____         | ____   |
+| Cassava      | ____   | ____     | ____ | ____              | ____         | ____   |
+| Synthetic    | ____   | ____     | ____ | ____              | ____         | ____   |
+
+---
+
+## Run hygiene
+
+- Every run writes `results/<exp_id>/<seed>/metrics.json` + the exact config used.
+- Seeds fixed to {0, 1, 2} everywhere; report mean ± CI, never a single seed.
+- One experiment = one commit; put the `exp_id` in the commit message.
+- No condition, dataset, budget, or metric added after Phase 1 unblinding.
