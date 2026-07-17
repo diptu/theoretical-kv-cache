@@ -5,6 +5,8 @@
 A pre-registered experiment testing whether the test-error peak in sparse networks (He et al., 2022) is located by effective dimension measured from the Hessian eigenspectrum. If true, curves from dynamic sparse training and static pruning — which peak at *different* nominal sparsities — should **collapse onto one curve** when plotted against effective dimension.
 
 [![Effective Dimension Collapses](./DST.jpeg)]
+
+[![Effective Dimension Collapses](./predicted_collapse_figure.svg)]
 ## Hypothesis
 
 Curth et al. (2023) showed double descent in classical methods can be an artifact of plotting against the wrong complexity axis. This experiment tests the deep-sparse-network case: nominal sparsity is the wrong axis; effective dimension is the right one.
